@@ -1,7 +1,8 @@
 {
   "name": "shared-memory",
-  "version": "0.0.1",
-  "description": "A k-v database using /hdm/ to shared memory",
+  "version": "0.0.2",
+  "description": "A k-v database using /shm/ to shared memory",
+  "keywords": "shared, memory, kv, db, shm",
   "homepage": "https://github.com/ericdum/node-shared-memory",
   "bugs": "https://github.com/ericdum/node-shared-memory/issues",
   "author": "木酱 <lichen.dlc@alibaba-inc.com> (http://mujiang.info/)",
