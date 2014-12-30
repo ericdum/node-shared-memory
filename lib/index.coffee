@@ -21,6 +21,12 @@ ep = require 'event-pipe'
 #
 ###
 
+mkdirpSync = (uri) ->
+  unless fs.existsSync uri
+    mkdirpSync uri.split('/').slice(0, -1).join('/')
+    console.log 'mkdir', uri
+    fs.mkdirSync uri
+
 class File_DB
   constructor: (options) ->
     @options = os
@@ -34,6 +40,9 @@ class File_DB
     if fs.existsSync '/shm/'
       @options.dir = path.join '/shm', @options.dir
 
+    unless fs.existsSync @options.dir
+      mkdirpSync @options.dir
+
     @indexPath = path.join @options.dir, @options.index_file
     @dataPath = path.join @options.dir, @options.data_file
 
@@ -43,9 +52,11 @@ class File_DB
     @_ready = false
     cb = (err) =>
       if err
+        console.log err
         @_error = err
       else
         @_ready = true
+      callback(@_error, @_ready) for callback in @callbacks
 
     _db = @
     flow = ep()
@@ -59,9 +70,13 @@ class File_DB
       cb()
     .run()
 
-  ready: (cb) ->
-    if @_error then cb @_error
-    else cb null, @_ready
+    @callbacks = []
+
+  ready: (callback) ->
+    unless @_ready
+      return @callbacks.push callback
+    else
+      callback @_error, @_ready
 
   get: (key, cb) ->
     unless cb then cb = ->
@@ -84,9 +99,9 @@ class File_DB
 
   _write: (key, val, cb) ->
     @index.has key, val.length, (err, position) =>
-      cb err
+      cb err if err
       task = new Task path.join @options.dir, @options.lock_dir, key+'.lock'
-      task.process (cb) =>
+      task.process () =>
         @_saveData key, val, position, cb
 
   _saveData: (key, val, [start, length], cb) ->
@@ -106,7 +121,7 @@ class Task
   constructor: (@lock_file)->
     @trying = false
 
-  process: (_process) ->
+  process: (cb) ->
     unless @trying
       @trying = true
       that = @
@@ -123,7 +138,7 @@ class Task
         .lazy -> that._unlock @
         .lazy ->
           that.trying = false
-          @()
+          cb()
         .run()
       process.nextTick retry
 
@@ -131,13 +146,13 @@ class Task
     fs.exists @lock_file, (exists) =>
       return cb 'locked by others' if exists
       fs.open @lock_file, 'w', (err, fd) =>
-        cb err if err
+        return cb err if err
         fs.closeSync(fd)
         cb()
 
   _unlock: (cb) ->
     fs.unlink @lock_file, (err) ->
-      #console.log 'unlock err', err if err
+      console.log 'unlock error', err if err
       cb()
 
 class Index
@@ -147,7 +162,7 @@ class Index
     @cache = {}
     @task  = new Task(@lock)
     @tasks = {}
-    @cbs   = {}
+    @cbs   = []
 
     fs.open @path, 'a+', (err, fd) =>
       @handle = fd
@@ -166,15 +181,15 @@ class Index
   _try: (key, length, cb) ->
     length = @options.min_length if length < @options.min_length
     @tasks[key] = length if not @tasks[key] or @tasks[key] < length
-    @cbs[key] = cb
-    @task.process (cb)=>
+    @cbs.push [key, cb]
+    @task.process ()=>
       @_process cb
     
   _process: (callback) ->
     tasks = @tasks
     cbs = @cbs
     @tasks = {}
-    @cbs = {}
+    @cbs = []
     @_getDataLength (err, start) =>
       return cb err if err
       exists = false
@@ -184,18 +199,16 @@ class Index
       if exists
         data = JSON.stringify(@cache).replace(/^{|}$/g,"") + ','
         fs.write @handle, new Buffer(data), 0, data.length, 0, (err, written)=>
-          for key, cb of cbs
+          for [key, cb] in cbs
             cb null, @cache[key]
-          callback err
       else
         data = ""
         for key, length of tasks
           data += "\"#{key}\":#{JSON.stringify(@indexCache[key])},"
         @_getLength (err, size) =>
           fs.write @handle, new Buffer(data), 0, data.length, size, (err, written)=>
-            for key, cb of cbs
+            for [key, cb] in cbs
               cb null, @cache[key]
-            callback err
 
   _update: (cb) ->
     @_getLength (err, size) =>
