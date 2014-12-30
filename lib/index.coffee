@@ -32,7 +32,7 @@ class File_DB
     , options
 
     if fs.existsSync '/shm/'
-      @options.dir = '/shm' + @options.dir
+      @options.dir = path.join '/shm', @options.dir
 
     @indexPath = path.join @options.dir, @options.index_file
     @dataPath = path.join @options.dir, @options.data_file
