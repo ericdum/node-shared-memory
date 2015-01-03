@@ -126,7 +126,6 @@ class Task
     @trying = false
 
   process: (cb, done) ->
-    console.log arguments
     unless @trying
       @trying = true
       that = @
