@@ -39,7 +39,7 @@
 
   File_DB = (function() {
     function File_DB(options) {
-      var cb, flow, _db;
+      var cb, file, flow, lock_dir, _db, _i, _len, _ref;
       this.options = os({
         dir: '/tmp',
         index_file: 'index.fd',
@@ -53,6 +53,16 @@
       if (!fs.existsSync(this.options.dir)) {
         mkdirpSync(this.options.dir);
       }
+      lock_dir = path.join(this.options.dir, this.options.lock_dir);
+      if (fs.existsSync(lock_dir)) {
+        _ref = fs.readdirSync(lock_dir);
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          file = _ref[_i];
+          fs.unlinkSync(path.join(lock_dir, file));
+        }
+        fs.rmdirSync(lock_dir);
+      }
+      fs.mkdirSync(lock_dir);
       this.indexPath = path.join(this.options.dir, this.options.index_file);
       this.dataPath = path.join(this.options.dir, this.options.data_file);
       this.indexCache = {};
@@ -60,17 +70,16 @@
       this._ready = false;
       cb = (function(_this) {
         return function(err) {
-          var callback, _i, _len, _ref, _results;
+          var callback, _j, _len1, _ref1, _results;
           if (err) {
-            console.log(err);
             _this._error = err;
           } else {
             _this._ready = true;
           }
-          _ref = _this.callbacks;
+          _ref1 = _this.callbacks;
           _results = [];
-          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-            callback = _ref[_i];
+          for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+            callback = _ref1[_j];
             _results.push(callback(_this._error, _this._ready));
           }
           return _results;
@@ -98,27 +107,28 @@
     };
 
     File_DB.prototype.get = function(key, cb) {
-      var pos, _buffer;
       if (!cb) {
         cb = function() {};
       }
-      if (!this.index.get(key)) {
-        return cb(new Error('key not found!'));
-      }
-      pos = this.index.get(key);
-      _buffer = new Buffer(pos[1]);
-      return fs.read(this.dataHandle, _buffer, 0, pos[1], pos[0], (function(_this) {
-        return function(err) {
-          var data;
-          if (err) {
-            return cb(err);
+      return this.index.get(key, (function(_this) {
+        return function(err, pos) {
+          var _buffer;
+          if (!pos) {
+            return cb(new Error('key not found!'));
           }
-          data = _buffer.toString().trim();
-          if (!isNaN(data)) {
-            return cb(null, new Number(data));
-          } else {
-            return cb(null, _this._try_object(data));
-          }
+          _buffer = new Buffer(pos[1]);
+          return fs.read(_this.dataHandle, _buffer, 0, pos[1], pos[0], function(err) {
+            var data;
+            if (err) {
+              return cb(err);
+            }
+            data = _buffer.toString().trim();
+            if (!isNaN(data)) {
+              return cb(null, new Number(data));
+            } else {
+              return cb(null, _this._try_object(data));
+            }
+          });
         };
       })(this));
     };
@@ -134,16 +144,12 @@
     };
 
     File_DB.prototype._write = function(key, val, cb) {
-      return this.index.has(key, val.length, (function(_this) {
+      return this.index.make(key, val.length, (function(_this) {
         return function(err, position) {
-          var task;
           if (err) {
             cb(err);
           }
-          task = new Task(path.join(_this.options.dir, _this.options.lock_dir, key + '.lock'));
-          return task.process(function() {
-            return _this._saveData(key, val, position, cb);
-          });
+          return _this._saveData(key, val, position, cb);
         };
       })(this));
     };
@@ -179,8 +185,9 @@
       this.trying = false;
     }
 
-    Task.prototype.process = function(cb) {
+    Task.prototype.process = function(cb, done) {
       var retry, that;
+      console.log(arguments);
       if (!this.trying) {
         this.trying = true;
         that = this;
@@ -196,12 +203,12 @@
           }).lazy(function() {
             return that._lock(this);
           }).lazy(function() {
-            return _process(this);
+            return cb(this);
           }).lazy(function() {
             return that._unlock(this);
           }).lazy(function() {
             that.trying = false;
-            return cb();
+            return done();
           }).run();
         };
         return process.nextTick(retry);
@@ -209,27 +216,16 @@
     };
 
     Task.prototype._lock = function(cb) {
-      return fs.exists(this.lock_file, (function(_this) {
-        return function(exists) {
-          if (exists) {
-            return cb('locked by others');
-          }
-          return fs.open(_this.lock_file, 'w', function(err, fd) {
-            if (err) {
-              return cb(err);
-            }
-            fs.closeSync(fd);
-            return cb();
-          });
-        };
-      })(this));
+      if (fs.existsSync(this.lock_file)) {
+        return cb('locked by others');
+      } else {
+        fs.writeFileSync(this.lock_file, 'lock');
+        return cb();
+      }
     };
 
     Task.prototype._unlock = function(cb) {
       return fs.unlink(this.lock_file, function(err) {
-        if (err) {
-          console.log('unlock error', err);
-        }
         return cb();
       });
     };
@@ -248,29 +244,48 @@
       this.task = new Task(this.lock);
       this.tasks = {};
       this.cbs = [];
+      this.mtime = 0;
       fs.open(this.path, 'a+', (function(_this) {
-        return function(err, fd) {
+        return function(err, fd, stat) {
           _this.handle = fd;
           return _this._update(cb);
         };
       })(this));
     }
 
-    Index.prototype.get = function(key) {
-      return this.cache[key];
-    };
-
-    Index.prototype.has = function(key, length, cb) {
+    Index.prototype.get = function(key, cb) {
       var position;
-      position = this.get(key);
-      if (!(position && length < position[1])) {
-        return this._try(key, length, cb);
+      position = this.cache[key];
+      if (!position) {
+        return fs.fstat(this.handle, (function(_this) {
+          return function(err, stat) {
+            if (stat.mtime.getTime() === _this.mtime) {
+              return cb();
+            } else {
+              return _this._update(function() {
+                return cb(null, _this.cache[key]);
+              });
+            }
+          };
+        })(this));
       } else {
         return cb(null, position);
       }
     };
 
-    Index.prototype._try = function(key, length, cb) {
+    Index.prototype.make = function(key, length, cb) {
+      return this.get(key, (function(_this) {
+        return function(err, position) {
+          if (!(position && length >= position[1])) {
+            return _this._add(key, length, cb);
+          } else {
+            return cb(null, position);
+          }
+        };
+      })(this));
+    };
+
+    Index.prototype._add = function(key, length, cb) {
       if (length < this.options.min_length) {
         length = this.options.min_length;
       }
@@ -278,11 +293,21 @@
         this.tasks[key] = length;
       }
       this.cbs.push([key, cb]);
-      return this.task.process((function(_this) {
-        return function() {
-          return _this._process(cb);
-        };
-      })(this));
+      return this._clearup();
+    };
+
+    Index.prototype._clearup = function() {
+      if (this.cbs.length) {
+        return this.task.process((function(_this) {
+          return function(done) {
+            return _this._process(done);
+          };
+        })(this), (function(_this) {
+          return function() {
+            return _this._clearup();
+          };
+        })(this));
+      }
     };
 
     Index.prototype._process = function(callback) {
@@ -300,37 +325,36 @@
           exists = false;
           for (key in tasks) {
             length = tasks[key];
-            _this.cache[key] = [start, length];
             if (_this.cache[key]) {
               exists = true;
             }
+            _this.cache[key] = [start, length];
+            start += length;
           }
           if (exists) {
             data = JSON.stringify(_this.cache).replace(/^{|}$/g, "") + ',';
             return fs.write(_this.handle, new Buffer(data), 0, data.length, 0, function(err, written) {
-              var cb, _i, _len, _ref, _results;
-              _results = [];
+              var cb, _i, _len, _ref;
               for (_i = 0, _len = cbs.length; _i < _len; _i++) {
                 _ref = cbs[_i], key = _ref[0], cb = _ref[1];
-                _results.push(cb(null, _this.cache[key]));
+                cb(null, _this.cache[key]);
               }
-              return _results;
+              return callback();
             });
           } else {
             data = "";
             for (key in tasks) {
               length = tasks[key];
-              data += "\"" + key + "\":" + (JSON.stringify(_this.indexCache[key])) + ",";
+              data += "\"" + key + "\":" + (JSON.stringify(_this.cache[key])) + ",";
             }
             return _this._getLength(function(err, size) {
               return fs.write(_this.handle, new Buffer(data), 0, data.length, size, function(err, written) {
-                var cb, _i, _len, _ref, _results;
-                _results = [];
+                var cb, _i, _len, _ref;
                 for (_i = 0, _len = cbs.length; _i < _len; _i++) {
                   _ref = cbs[_i], key = _ref[0], cb = _ref[1];
-                  _results.push(cb(null, _this.cache[key]));
+                  cb(null, _this.cache[key]);
                 }
-                return _results;
+                return callback();
               });
             });
           }
@@ -356,9 +380,12 @@
     };
 
     Index.prototype._getLength = function(cb) {
-      return fs.fstat(this.handle, function(err, stat) {
-        return cb(err, stat.size);
-      });
+      return fs.fstat(this.handle, (function(_this) {
+        return function(err, stat) {
+          _this.mtime = stat.mtime.getTime();
+          return cb(err, stat.size);
+        };
+      })(this));
     };
 
     Index.prototype._getDataLength = function(cb) {

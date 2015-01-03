@@ -43,6 +43,13 @@ class File_DB
     unless fs.existsSync @options.dir
       mkdirpSync @options.dir
 
+    lock_dir = path.join @options.dir, @options.lock_dir
+    if fs.existsSync lock_dir
+      for file in fs.readdirSync lock_dir
+        fs.unlinkSync path.join lock_dir, file
+      fs.rmdirSync lock_dir
+    fs.mkdirSync lock_dir
+
     @indexPath = path.join @options.dir, @options.index_file
     @dataPath = path.join @options.dir, @options.data_file
 
@@ -52,7 +59,6 @@ class File_DB
     @_ready = false
     cb = (err) =>
       if err
-        console.log err
         @_error = err
       else
         @_ready = true
@@ -80,16 +86,16 @@ class File_DB
 
   get: (key, cb) ->
     unless cb then cb = ->
-    return cb new Error 'key not found!' unless @index.get key
-    pos = @index.get key
-    _buffer = new Buffer pos[1]
-    fs.read @dataHandle, _buffer, 0, pos[1], pos[0], (err) =>
-      return cb err if err
-      data = _buffer.toString().trim()
-      unless isNaN(data)
-        cb null, new Number data
-      else
-        cb null, @_try_object data
+    @index.get key, (err, pos) =>
+      return cb new Error 'key not found!' unless pos
+      _buffer = new Buffer pos[1]
+      fs.read @dataHandle, _buffer, 0, pos[1], pos[0], (err) =>
+        return cb err if err
+        data = _buffer.toString().trim()
+        unless isNaN(data)
+          cb null, new Number data
+        else
+          cb null, @_try_object data
 
   set: (key, val, cb) ->
     unless cb then cb = ->
@@ -98,11 +104,9 @@ class File_DB
     @_write key, val, cb
 
   _write: (key, val, cb) ->
-    @index.has key, val.length, (err, position) =>
+    @index.make key, val.length, (err, position) =>
       cb err if err
-      task = new Task path.join @options.dir, @options.lock_dir, key+'.lock'
-      task.process () =>
-        @_saveData key, val, position, cb
+      @_saveData key, val, position, cb
 
   _saveData: (key, val, [start, length], cb) ->
     val = val.toString()
@@ -121,7 +125,8 @@ class Task
   constructor: (@lock_file)->
     @trying = false
 
-  process: (cb) ->
+  process: (cb, done) ->
+    console.log arguments
     unless @trying
       @trying = true
       that = @
@@ -134,25 +139,23 @@ class Task
             cb err
           
         .lazy -> that._lock @
-        .lazy -> _process @
+        .lazy -> cb @
         .lazy -> that._unlock @
         .lazy ->
           that.trying = false
-          cb()
+          done()
         .run()
       process.nextTick retry
 
   _lock: (cb) ->
-    fs.exists @lock_file, (exists) =>
-      return cb 'locked by others' if exists
-      fs.open @lock_file, 'w', (err, fd) =>
-        return cb err if err
-        fs.closeSync(fd)
-        cb()
+    if fs.existsSync @lock_file
+      cb 'locked by others'
+    else
+      fs.writeFileSync @lock_file, 'lock'
+      cb()
 
   _unlock: (cb) ->
     fs.unlink @lock_file, (err) ->
-      console.log 'unlock error', err if err
       cb()
 
 class Index
@@ -163,27 +166,42 @@ class Index
     @task  = new Task(@lock)
     @tasks = {}
     @cbs   = []
+    @mtime = 0
 
-    fs.open @path, 'a+', (err, fd) =>
+    fs.open @path, 'a+', (err, fd, stat) =>
       @handle = fd
       @_update cb
 
-  get: (key) ->
-    @cache[key]
-
-  has: (key, length, cb) ->
-    position = @get key
-    unless position and length < position[1]
-      @_try key, length, cb
+  get: (key, cb) ->
+    position = @cache[key]
+    unless position
+      fs.fstat @handle, (err, stat) =>
+        if stat.mtime.getTime() is @mtime
+          cb()
+        else
+          @_update => cb null, @cache[key]
     else
       cb null, position
 
-  _try: (key, length, cb) ->
+  make: (key, length, cb) ->
+    @get key, (err, position) =>
+      unless position and length >= position[1]
+        @_add key, length, cb
+      else
+        cb null, position
+
+  _add: (key, length, cb) ->
     length = @options.min_length if length < @options.min_length
     @tasks[key] = length if not @tasks[key] or @tasks[key] < length
     @cbs.push [key, cb]
-    @task.process ()=>
-      @_process cb
+    @_clearup()
+
+  _clearup: ->
+    if @cbs.length
+      @task.process (done) =>
+        @_process done
+      , =>
+        @_clearup()
     
   _process: (callback) ->
     tasks = @tasks
@@ -194,21 +212,24 @@ class Index
       return cb err if err
       exists = false
       for key, length of tasks
-        @cache[key] = [start, length]
         if @cache[key] then exists = true
+        @cache[key] = [start, length]
+        start += length
       if exists
         data = JSON.stringify(@cache).replace(/^{|}$/g,"") + ','
         fs.write @handle, new Buffer(data), 0, data.length, 0, (err, written)=>
           for [key, cb] in cbs
             cb null, @cache[key]
+          callback()
       else
         data = ""
         for key, length of tasks
-          data += "\"#{key}\":#{JSON.stringify(@indexCache[key])},"
+          data += "\"#{key}\":#{JSON.stringify(@cache[key])},"
         @_getLength (err, size) =>
           fs.write @handle, new Buffer(data), 0, data.length, size, (err, written)=>
             for [key, cb] in cbs
               cb null, @cache[key]
+            callback()
 
   _update: (cb) ->
     @_getLength (err, size) =>
@@ -221,7 +242,8 @@ class Index
         cb()
 
   _getLength: (cb) ->
-    fs.fstat @handle, (err, stat) ->
+    fs.fstat @handle, (err, stat) =>
+      @mtime = stat.mtime.getTime()
       cb err, stat.size
 
   _getDataLength: (cb) ->
