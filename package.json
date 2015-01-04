@@ -1,15 +1,24 @@
 {
   "name": "shared-memory",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A k-v database using /shm/ to shared memory",
   "keywords": "shared, memory, kv, db, shm",
   "homepage": "https://github.com/ericdum/node-shared-memory",
   "bugs": "https://github.com/ericdum/node-shared-memory/issues",
   "author": "木酱 <lichen.dlc@alibaba-inc.com> (http://mujiang.info/)",
-  "repository": {"type":"git", "url": "https://github.com/ericdum/node-shared-memory"},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericdum/node-shared-memory"
+  },
   "dependencies": {
     "benchmark": "*",
-    "options-stream": "*",
-    "event-pipe":"*"
+    "event-pipe": "*",
+    "fs-extra": "^0.13.0",
+    "lockfile": "*",
+    "options-stream": "*"
+  },
+  "devDependencies": {
+    "mocha": "*",
+    "expect.js": "*"
   }
 }
