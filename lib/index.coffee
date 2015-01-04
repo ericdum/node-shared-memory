@@ -175,37 +175,11 @@ class File_DB
     catch e
       return data
 
-class Task
-  constructor: (@lock_file)->
-    @trying = false
-
-  process: (cb, done) ->
-    unless @trying
-      @trying = true
-      that = @
-      retry = ->
-        flow = ep()
-        flow.on 'error', (err) ->
-          if err and err.code is 'EEXIST'
-            return process.nextTick retry
-          else
-            cb err
-          
-        .lazy -> lockfile.lock that.lock_file, @
-        .lazy -> cb @
-        .lazy -> lockfile.unlock that.lock_file, @
-        .lazy ->
-          that.trying = false
-          done()
-        .run()
-      process.nextTick retry
-
 class Index
   constructor: (@options, @dataHandle, cb) ->
     @path  = path.join @options.dir, @options.index_file
     @lock  = path.join @options.dir, @options.lock_dir, 'index.lock'
     @cache = {}
-    @task  = new Task(@lock)
     @tasks = {}
     @cbs   = []
     @mtime = 0
@@ -239,11 +213,20 @@ class Index
     @_clearup()
 
   _clearup: ->
-    if @cbs.length
-      @task.process (done) =>
-        @_process done
-      , =>
-        @_clearup()
+    return if @clearing
+    @clearing = true
+    # 默认重试5秒，如果文件锁1000ms未更新则抢锁，防止雪崩
+    lockfile.lock @lock, @options.lock_opt, (err) =>
+      if err
+        setTimeout =>
+          @clearing = false
+          @_clearup()
+        , 10
+      else
+        @_process =>
+          lockfile.unlock @lock, =>
+            @clearing = false
+            if @cbs.length then @_clearup()
     
   _process: (callback) ->
     tasks = @tasks
@@ -254,7 +237,9 @@ class Index
       return cb err if err
       exists = false
       for key, length of tasks
-        if @cache[key] then exists = true
+        if @cache[key]
+          continue if @cache[key][1] <= length
+          exists = true
         @cache[key] = [start, length]
         start += length
       if exists
@@ -294,3 +279,4 @@ class Index
 
 module.exports = (options) ->
   new File_DB options
+
