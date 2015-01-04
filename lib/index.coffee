@@ -37,9 +37,9 @@ class File_DB
       lock_dir: 'locks'
       min_length: 8
       lock_opt:
-        wait: 5000
-        pollPeriod: 1
-        stale: 1000
+        wait: 50000
+        pollPeriod: 5
+        stale: 10000
     , options
 
     if fs.existsSync '/shm/'
