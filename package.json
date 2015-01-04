@@ -18,7 +18,10 @@
     "options-stream": "*"
   },
   "devDependencies": {
-    "mocha": "*",
-    "expect.js": "*"
+    "istanbul"      : "*",
+    "mocha"         : "*",
+    "jscover"       : "*",
+    "coffee-script" : "*",
+    "expect.js"     : "*"
   }
 }
