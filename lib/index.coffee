@@ -73,7 +73,12 @@ class File_DB
     flow = ep()
     flow.on 'error', cb
     .lazy ->
-      fs.open _db.dataPath, 'a+', @
+      fs.open _db.dataPath, 'a', @
+    .lazy (fd) ->
+      fs.close fd, @
+    .lazy ->
+      ws = fs.createWriteStream _db.dataPath, {flags:'r+', encoding: 'utf8', mode: '0666'}
+      ws.on 'open', (fd) => @ null, fd
     .lazy (fd) ->
       _db.dataHandle = fd
       _db.index = new Index _db.options, fd, @
@@ -206,9 +211,22 @@ class Index
     @cbs   = []
     @mtime = 0
 
-    fs.open @path, 'a+', (err, fd, stat) =>
-      @handle = fd
-      @_update cb
+    _index = @
+    flow = ep()
+    flow.on 'error', cb
+    .lazy ->
+      fs.open _index.path, 'a', @
+    .lazy (fd) ->
+      fs.close fd, @
+    .lazy ->
+      ws = fs.createWriteStream _index.path, {flags:'r+', encoding: 'utf8', mode: '0666'}
+      ws.on 'open', (fd) => @ null, fd
+    .lazy (fd) ->
+      _index.handle = fd
+      _index._update cb
+    .lazy ->
+      cb()
+    .run()
 
   getAll: (cb) ->
     @_update => cb null, @cache

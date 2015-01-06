@@ -94,7 +94,21 @@ File_DB = (function() {
     _db = this;
     flow = ep();
     flow.on('error', cb).lazy(function() {
-      return fs.open(_db.dataPath, 'a+', this);
+      return fs.open(_db.dataPath, 'a', this);
+    }).lazy(function(fd) {
+      return fs.close(fd, this);
+    }).lazy(function() {
+      var ws;
+      ws = fs.createWriteStream(_db.dataPath, {
+        flags: 'r+',
+        encoding: 'utf8',
+        mode: '0666'
+      });
+      return ws.on('open', (function(_this) {
+        return function(fd) {
+          return _this(null, fd);
+        };
+      })(this));
     }).lazy(function(fd) {
       _db.dataHandle = fd;
       return _db.index = new Index(_db.options, fd, this);
@@ -301,6 +315,7 @@ File_DB = (function() {
 
 Index = (function() {
   function Index(options, dataHandle, cb) {
+    var flow, _index;
     this.options = options;
     this.dataHandle = dataHandle;
     this.path = path.join(this.options.dir, this.options.index_file);
@@ -309,12 +324,30 @@ Index = (function() {
     this.tasks = {};
     this.cbs = [];
     this.mtime = 0;
-    fs.open(this.path, 'a+', (function(_this) {
-      return function(err, fd, stat) {
-        _this.handle = fd;
-        return _this._update(cb);
-      };
-    })(this));
+    _index = this;
+    flow = ep();
+    flow.on('error', cb).lazy(function() {
+      return fs.open(_index.path, 'a', this);
+    }).lazy(function(fd) {
+      return fs.close(fd, this);
+    }).lazy(function() {
+      var ws;
+      ws = fs.createWriteStream(_index.path, {
+        flags: 'r+',
+        encoding: 'utf8',
+        mode: '0666'
+      });
+      return ws.on('open', (function(_this) {
+        return function(fd) {
+          return _this(null, fd);
+        };
+      })(this));
+    }).lazy(function(fd) {
+      _index.handle = fd;
+      return _index._update(cb);
+    }).lazy(function() {
+      return cb();
+    }).run();
   }
 
   Index.prototype.getAll = function(cb) {
