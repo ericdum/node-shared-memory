@@ -95,6 +95,28 @@ class File_DB
       return cb new Error 'key not found!' unless pos
       @_getData pos, cb
 
+  getAll: ( cb ) ->
+    @index.getAll (err, data) =>
+      func = []
+      result = {}
+      for key, position of data
+        func.push @_getdataMaker key, position
+      flow = ep()
+      flow.lazy func
+      flow.lazy ->
+        for [key, num] in arguments
+          result[key] = num
+        cb null, result
+      flow.run()
+
+
+  _getdataMaker: (key, position) ->
+    that = @
+    ->
+      flow = @
+      that._getData position, (err, num) ->
+        flow err, key, num
+
   increase: (key, num, cb) ->
     return cb() if num is 0
     if typeof num is 'function'
@@ -188,20 +210,19 @@ class Index
       @handle = fd
       @_update cb
 
+  getAll: (cb) ->
+    @_update => cb null, @cache
+
   get: (key, cb) ->
     position = @cache[key]
     unless position
-      fs.fstat @handle, (err, stat) =>
-        if stat.mtime.getTime() is @mtime
-          cb()
-        else
-          @_update => cb null, @cache[key]
+      @_update => cb null, @cache[key]
     else
       cb null, position
 
   ensure: (key, length, cb) ->
     @get key, (err, position) =>
-      unless position and length >= position[1]
+      unless position and length <= position[1]
         @_add key, length, cb
       else
         cb null, position
@@ -259,19 +280,23 @@ class Index
             callback()
 
   _update: (cb) ->
-    @_getLength (err, size) =>
-      unless size
-        @cache = {}
-        return cb()
-      buffer = new Buffer size
-      fs.read @handle, buffer, 0, size, 0, (err) =>
-        @cache = JSON.parse '{'+buffer.toString().trim().replace(/,$/, '')+'}'
+    fs.fstat @handle, (err, stat) =>
+      if stat.mtime.getTime() is @mtime
         cb()
+      else
+        @_getLength (err, size, stat) =>
+          @mtime = stat.mtime.getTime()
+          unless size
+            @cache = {}
+            return cb()
+          buffer = new Buffer size
+          fs.read @handle, buffer, 0, size, 0, (err) =>
+            @cache = JSON.parse '{'+buffer.toString().trim().replace(/,$/, '')+'}'
+            cb()
 
   _getLength: (cb) ->
-    fs.fstat @handle, (err, stat) =>
-      @mtime = stat.mtime.getTime()
-      cb err, stat.size
+    fs.fstat @handle, (err, stat) ->
+      cb err, stat.size, stat
 
   _getDataLength: (cb) ->
     fs.fstat @dataHandle, (err, stat) ->

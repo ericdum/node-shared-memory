@@ -104,6 +104,17 @@ describe("accumulate", function(){
   })
 });
 
+describe("getAll", function(){
+  it('get All the data', function(done){
+    db.getAll(function(err, data){
+      expect(err).to.not.be.ok()
+      expect(data).to.be.ok()
+      expect(Object.keys(data).length).to.above(100)
+      done()
+    })
+  })
+});
+
 function regularExpect(key, value, cb) {
   db.get(key, function(err, data){
     expect(data).to.be(value)

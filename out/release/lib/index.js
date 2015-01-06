@@ -126,6 +126,43 @@ File_DB = (function() {
     })(this));
   };
 
+  File_DB.prototype.getAll = function(cb) {
+    return this.index.getAll((function(_this) {
+      return function(err, data) {
+        var flow, func, key, position, result;
+        func = [];
+        result = {};
+        for (key in data) {
+          position = data[key];
+          func.push(_this._getdataMaker(key, position));
+        }
+        flow = ep();
+        flow.lazy(func);
+        flow.lazy(function() {
+          var num, _i, _len, _ref;
+          for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+            _ref = arguments[_i], key = _ref[0], num = _ref[1];
+            result[key] = num;
+          }
+          return cb(null, result);
+        });
+        return flow.run();
+      };
+    })(this));
+  };
+
+  File_DB.prototype._getdataMaker = function(key, position) {
+    var that;
+    that = this;
+    return function() {
+      var flow;
+      flow = this;
+      return that._getData(position, function(err, num) {
+        return flow(err, key, num);
+      });
+    };
+  };
+
   File_DB.prototype.increase = function(key, num, cb) {
     if (num === 0) {
       return cb();
@@ -280,19 +317,21 @@ Index = (function() {
     })(this));
   }
 
+  Index.prototype.getAll = function(cb) {
+    return this._update((function(_this) {
+      return function() {
+        return cb(null, _this.cache);
+      };
+    })(this));
+  };
+
   Index.prototype.get = function(key, cb) {
     var position;
     position = this.cache[key];
     if (!position) {
-      return fs.fstat(this.handle, (function(_this) {
-        return function(err, stat) {
-          if (stat.mtime.getTime() === _this.mtime) {
-            return cb();
-          } else {
-            return _this._update(function() {
-              return cb(null, _this.cache[key]);
-            });
-          }
+      return this._update((function(_this) {
+        return function() {
+          return cb(null, _this.cache[key]);
         };
       })(this));
     } else {
@@ -303,7 +342,7 @@ Index = (function() {
   Index.prototype.ensure = function(key, length, cb) {
     return this.get(key, (function(_this) {
       return function(err, position) {
-        if (!(position && length >= position[1])) {
+        if (!(position && length <= position[1])) {
           return _this._add(key, length, cb);
         } else {
           return cb(null, position);
@@ -405,29 +444,33 @@ Index = (function() {
   };
 
   Index.prototype._update = function(cb) {
-    return this._getLength((function(_this) {
-      return function(err, size) {
-        var buffer;
-        if (!size) {
-          _this.cache = {};
+    return fs.fstat(this.handle, (function(_this) {
+      return function(err, stat) {
+        if (stat.mtime.getTime() === _this.mtime) {
           return cb();
+        } else {
+          return _this._getLength(function(err, size, stat) {
+            var buffer;
+            _this.mtime = stat.mtime.getTime();
+            if (!size) {
+              _this.cache = {};
+              return cb();
+            }
+            buffer = new Buffer(size);
+            return fs.read(_this.handle, buffer, 0, size, 0, function(err) {
+              _this.cache = JSON.parse('{' + buffer.toString().trim().replace(/,$/, '') + '}');
+              return cb();
+            });
+          });
         }
-        buffer = new Buffer(size);
-        return fs.read(_this.handle, buffer, 0, size, 0, function(err) {
-          _this.cache = JSON.parse('{' + buffer.toString().trim().replace(/,$/, '') + '}');
-          return cb();
-        });
       };
     })(this));
   };
 
   Index.prototype._getLength = function(cb) {
-    return fs.fstat(this.handle, (function(_this) {
-      return function(err, stat) {
-        _this.mtime = stat.mtime.getTime();
-        return cb(err, stat.size);
-      };
-    })(this));
+    return fs.fstat(this.handle, function(err, stat) {
+      return cb(err, stat.size, stat);
+    });
   };
 
   Index.prototype._getDataLength = function(cb) {
