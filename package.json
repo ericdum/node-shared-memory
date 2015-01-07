@@ -1,6 +1,6 @@
 {
   "name": "shared-memory",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "A k-v database using /shm/ to shared memory",
   "keywords": "shared, memory, kv, db, shm",
   "homepage": "https://github.com/ericdum/node-shared-memory",
