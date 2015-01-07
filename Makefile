@@ -71,6 +71,11 @@ test-cov: -pre-test-cov
 		$(-BIN_ISTANBUL) cover ./node_modules/.bin/_mocha -- -u bdd -R tap --compilers coffee:coffee-script/register $(patsubst $(-COVERAGE_DIR)%, %, $(-COVERAGE_TESTS)) && \
 	  $(-BIN_ISTANBUL) report html
 
+test-lcov: -pre-test-cov
+	@cd $(-COVERAGE_DIR) && \
+		$(-BIN_ISTANBUL) cover ./node_modules/.bin/_mocha --report lcovonly -- -R spec --compilers coffee:coffee-script/register $(patsubst $(-COVERAGE_DIR)%, %, $(-COVERAGE_TESTS)) && \
+		cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
+
 .-PHONY: default
 
 clean:

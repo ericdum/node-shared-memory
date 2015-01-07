@@ -12,19 +12,21 @@
   },
   "dependencies": {
     "benchmark": "*",
+    "coveralls": "^2.11.2",
     "event-pipe": "*",
     "fs-extra": "^0.13.0",
     "lockfile": "*",
+    "mocha-lcov-reporter": "0.0.1",
     "options-stream": "*"
   },
   "devDependencies": {
-    "istanbul"      : "*",
-    "mocha"         : "*",
-    "jscover"       : "*",
-    "coffee-script" : "*",
-    "expect.js"     : "*"
+    "istanbul": "*",
+    "mocha": "*",
+    "jscover": "*",
+    "coffee-script": "*",
+    "expect.js": "*"
   },
   "scripts": {
-    "test" : "COV_TEST=true make test-cov"
+    "test": "COV_TEST=true make test-lcov"
   }
 }
