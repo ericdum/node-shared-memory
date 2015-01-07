@@ -1,1 +1,3 @@
+![https://api.travis-ci.org/ericdum/node-shared-memory.svg](https://api.travis-ci.org/ericdum/node-shared-memory.svg)
+
 ### Working...
