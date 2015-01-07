@@ -23,5 +23,8 @@
     "jscover"       : "*",
     "coffee-script" : "*",
     "expect.js"     : "*"
+  },
+  "scripts": {
+    "test" : "COV_TEST=true make test-cov"
   }
 }
