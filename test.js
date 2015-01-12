@@ -58,6 +58,17 @@ describe("set", function(){
     })
   })
 });
+describe("pop", function(){
+  it('should get data back and delete it', function(done){
+    db.pop('test', function(err, data){
+      expect(data).to.be(1)
+      db.get('test', function(err, data){
+        expect(data).to.not.be.ok()
+        done()
+      })
+    })
+  })
+});
 
 describe("accumulate", function(){
   describe("increase", function(){
@@ -111,6 +122,22 @@ describe("getAll", function(){
       expect(data).to.be.ok()
       expect(Object.keys(data).length).to.above(100)
       done()
+    })
+  })
+});
+
+describe("popAll", function(){
+  it('pop All the data', function(done){
+    db.popAll(function(err, data){
+      expect(err).to.not.be.ok()
+      expect(data).to.be.ok()
+      expect(Object.keys(data).length).to.above(100)
+      db.getAll(function(err, data){
+        expect(err).to.not.be.ok()
+        expect(data).to.be.ok()
+        expect(Object.keys(data).length).to.be(0)
+        done()
+      })
     })
   })
 });

@@ -110,16 +110,42 @@ class File_DB
       flow.lazy func
       flow.lazy ->
         for [key, num] in arguments
-          result[key] = num
+          result[key] = num if num
         cb null, result
       flow.run()
 
+  pop: (key, cb) ->
+    unless cb then cb = ->
+    @index.get key, (err, pos) =>
+      return cb new Error 'key not found!' unless pos
+      @_popData pos, cb
+
+  popAll: ( cb ) ->
+    @index.getAll (err, data) =>
+      func = []
+      result = {}
+      for key, position of data
+        func.push @_popdataMaker key, position
+      flow = ep()
+      flow.lazy func
+      flow.lazy ->
+        for [key, num] in arguments
+          result[key] = num if num
+        cb null, result
+      flow.run()
 
   _getdataMaker: (key, position) ->
     that = @
     ->
       flow = @
       that._getData position, (err, num) ->
+        flow err, key, num
+
+  _popdataMaker: (key, position) ->
+    that = @
+    ->
+      flow = @
+      that._popData position, (err, num) ->
         flow err, key, num
 
   increase: (key, num, cb) ->
@@ -157,7 +183,7 @@ class File_DB
               # extend space
               @_write key, num, done
             else
-              @_saveData key, num, pos, done
+              @_saveData num, pos, done
 
   _process: (key, done, cb) ->
     the = @
@@ -171,12 +197,22 @@ class File_DB
     _buffer = new Buffer pos[1]
     fs.read @dataHandle, _buffer, 0, pos[1], pos[0], (err) =>
       return cb err if err
-      data = _buffer.toString().trim()
+      @_parseData _buffer, cb
 
-      unless isNaN(data)
-        cb null, 1*data
-      else
-        cb null, @_try_object data
+  _popData: (pos, cb) ->
+    _buffer = new Buffer pos[1]
+    fs.read @dataHandle, _buffer, 0, pos[1], pos[0], (err) =>
+      return cb err if err
+      @_saveData '', pos, (err) =>
+        return cb err if err
+        @_parseData _buffer, cb
+
+  _parseData: (_buffer, cb) ->
+    data = _buffer.toString().trim()
+    unless isNaN(data)
+      cb null, 1*data
+    else
+      cb null, @_try_object data
 
   set: (key, val, cb) ->
     unless cb then cb = ->
@@ -187,9 +223,9 @@ class File_DB
   _write: (key, val, cb) ->
     @index.ensure key, val.length, (err, position) =>
       return cb err if err
-      @_saveData key, val, position, cb
+      @_saveData val, position, cb
 
-  _saveData: (key, val, [start, length], cb) ->
+  _saveData: (val, [start, length], cb) ->
     val = val.toString()
     if val.length < length
       val = (new Array(length-val.length+1)).join(' ') + val

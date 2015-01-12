@@ -1,6 +1,6 @@
 {
   "name": "shared-memory",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "A k-v database using /shm/ to shared memory",
   "keywords": "shared, memory, kv, db, shm",
   "homepage": "https://github.com/ericdum/node-shared-memory",
@@ -27,6 +27,7 @@
     "expect.js": "*"
   },
   "scripts": {
-    "test": "COV_TEST=true make test-lcov"
+    "test": "COV_TEST=true make test-lcov",
+    "republish": "make release"
   }
 }

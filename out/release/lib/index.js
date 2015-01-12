@@ -156,7 +156,50 @@ File_DB = (function() {
           var num, _i, _len, _ref;
           for (_i = 0, _len = arguments.length; _i < _len; _i++) {
             _ref = arguments[_i], key = _ref[0], num = _ref[1];
-            result[key] = num;
+            if (num) {
+              result[key] = num;
+            }
+          }
+          return cb(null, result);
+        });
+        return flow.run();
+      };
+    })(this));
+  };
+
+  File_DB.prototype.pop = function(key, cb) {
+    if (!cb) {
+      cb = function() {};
+    }
+    return this.index.get(key, (function(_this) {
+      return function(err, pos) {
+        if (!pos) {
+          return cb(new Error('key not found!'));
+        }
+        return _this._popData(pos, cb);
+      };
+    })(this));
+  };
+
+  File_DB.prototype.popAll = function(cb) {
+    return this.index.getAll((function(_this) {
+      return function(err, data) {
+        var flow, func, key, position, result;
+        func = [];
+        result = {};
+        for (key in data) {
+          position = data[key];
+          func.push(_this._popdataMaker(key, position));
+        }
+        flow = ep();
+        flow.lazy(func);
+        flow.lazy(function() {
+          var num, _i, _len, _ref;
+          for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+            _ref = arguments[_i], key = _ref[0], num = _ref[1];
+            if (num) {
+              result[key] = num;
+            }
           }
           return cb(null, result);
         });
@@ -172,6 +215,18 @@ File_DB = (function() {
       var flow;
       flow = this;
       return that._getData(position, function(err, num) {
+        return flow(err, key, num);
+      });
+    };
+  };
+
+  File_DB.prototype._popdataMaker = function(key, position) {
+    var that;
+    that = this;
+    return function() {
+      var flow;
+      flow = this;
+      return that._popData(position, function(err, num) {
         return flow(err, key, num);
       });
     };
@@ -224,7 +279,7 @@ File_DB = (function() {
               if (num.length > pos[1]) {
                 return _this._write(key, num, done);
               } else {
-                return _this._saveData(key, num, pos, done);
+                return _this._saveData(num, pos, done);
               }
             });
           }
@@ -253,18 +308,40 @@ File_DB = (function() {
     _buffer = new Buffer(pos[1]);
     return fs.read(this.dataHandle, _buffer, 0, pos[1], pos[0], (function(_this) {
       return function(err) {
-        var data;
         if (err) {
           return cb(err);
         }
-        data = _buffer.toString().trim();
-        if (!isNaN(data)) {
-          return cb(null, 1 * data);
-        } else {
-          return cb(null, _this._try_object(data));
-        }
+        return _this._parseData(_buffer, cb);
       };
     })(this));
+  };
+
+  File_DB.prototype._popData = function(pos, cb) {
+    var _buffer;
+    _buffer = new Buffer(pos[1]);
+    return fs.read(this.dataHandle, _buffer, 0, pos[1], pos[0], (function(_this) {
+      return function(err) {
+        if (err) {
+          return cb(err);
+        }
+        return _this._saveData('', pos, function(err) {
+          if (err) {
+            return cb(err);
+          }
+          return _this._parseData(_buffer, cb);
+        });
+      };
+    })(this));
+  };
+
+  File_DB.prototype._parseData = function(_buffer, cb) {
+    var data;
+    data = _buffer.toString().trim();
+    if (!isNaN(data)) {
+      return cb(null, 1 * data);
+    } else {
+      return cb(null, this._try_object(data));
+    }
   };
 
   File_DB.prototype.set = function(key, val, cb) {
@@ -283,12 +360,12 @@ File_DB = (function() {
         if (err) {
           return cb(err);
         }
-        return _this._saveData(key, val, position, cb);
+        return _this._saveData(val, position, cb);
       };
     })(this));
   };
 
-  File_DB.prototype._saveData = function(key, val, _arg, cb) {
+  File_DB.prototype._saveData = function(val, _arg, cb) {
     var data, length, start;
     start = _arg[0], length = _arg[1];
     val = val.toString();
