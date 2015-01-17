@@ -24,7 +24,8 @@
     "mocha": "*",
     "jscover": "*",
     "coffee-script": "*",
-    "expect.js": "*"
+    "expect.js": "*",
+    "ab": "*"
   },
   "scripts": {
     "test": "COV_TEST=true make test-lcov",
