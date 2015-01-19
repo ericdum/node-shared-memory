@@ -40,7 +40,7 @@ dev: clean json
 		--growl \
 		$(-TESTS)
 
-test: clean json
+test: json
 	@$(-BIN_MOCHA) \
 		--compilers coffee:coffee-script/register \
 		--reporter tap \

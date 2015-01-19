@@ -20,7 +20,7 @@ var fn = function (callback) {
 
 db.ready(function(){
   ab.run(fn, {
-      concurrency: 5,
-      requests: 100000
+      concurrency: 50,
+      requests: 10000
   });
 });

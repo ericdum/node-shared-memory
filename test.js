@@ -2,8 +2,26 @@ var fs = require('fs-extra')
 var expect = require("expect.js");
 var ep = require('event-pipe')
 var db = null
+var path = require('path')
+
+//var mp = require('child_process').spawn('node', [path.join(__dirname, '/mp.js'), 10000]);
 
 describe("ready", function(){
+  /*
+  before.skip(function(done){
+    this.timeout = 0;
+    mp.stdout.on('data', function(data) {
+      console.log(data.toString());
+    });
+    mp.stderr.on('data', function(data) {
+      console.log(data)
+    });
+    mp.on('close', function (code) {
+      console.log('child process exited with code ' + code);
+      done()
+    });
+  });
+  //*/
   before(function(done){
     fs.remove('./tmp', done)
   });
@@ -29,6 +47,9 @@ describe("ready", function(){
     })
   })
 });
+
+describe('mutil-process', function(){
+})
 
 describe("set", function(){
   it('hundred keys', function(done){

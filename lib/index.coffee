@@ -3,6 +3,8 @@ fs = require 'fs'
 os = require 'options-stream'
 ep = require 'event-pipe'
 lockfile = require 'lockfile'
+lockfile = require './filelock'
+accpool = require './pool'
 
 ###
 # properties:
@@ -23,27 +25,27 @@ lockfile = require 'lockfile'
 ###
 
 mkdirpSync = (uri) ->
-  unless fs.existsSync uri
-    mkdirpSync uri.split('/').slice(0, -1).join('/')
-    console.log 'mkdir', uri
-    fs.mkdirSync uri
+  try
+    unless fs.existsSync uri
+      mkdirpSync uri.split('/').slice(0, -1).join('/')
+      console.log 'mkdir', uri
+      fs.mkdirSync uri
 
 class File_DB
   constructor: (options) ->
     @options = os
-      dir: '/tmp'
+      dir: '/tmp/'
       index_file: 'index.fd'
       data_file: 'data.fd'
       lock_dir: 'locks'
       min_length: 8
       lock_opt:
+        pollPeriod: 10
         wait: 50000
-        pollPeriod: 5
-        stale: 10000
     , options
 
-    if fs.existsSync '/shm/'
-      @options.dir = path.join '/shm', @options.dir
+    if fs.existsSync '/dev/shm/'
+      @options.dir = path.join '/dev/shm', @options.dir
 
     unless fs.existsSync @options.dir
       mkdirpSync @options.dir
@@ -149,6 +151,7 @@ class File_DB
         flow err, key, num
 
   increase: (key, num, cb) ->
+    unless cb then cb = ->
     return cb() if num is 0
     if typeof num is 'function'
       cb = num
@@ -157,6 +160,7 @@ class File_DB
     @_accumulate key, num, cb
 
   decrease: (key, num, cb) ->
+    unless cb then cb = ->
     return cb() if num is 0
     if typeof num is 'function'
       cb = num
@@ -166,32 +170,30 @@ class File_DB
     @_accumulate key, num, cb
 
   _accumulate: (key, acc, cb ) ->
-    unless cb then cb = ->
-    # lock
-    @_process key, cb, (done) =>
-      @index.get key, (err, pos) =>
-        # create if not exists
-        unless pos
-          @_write key, acc.toString(), done
-        else
-          # get data
-          @_getData pos, (err, num) =>
-            num += acc
-            num = num.toString()
-            # set data
-            if num.length > pos[1]
-              # extend space
-              @_write key, num, done
-            else
-              @_saveData num, pos, done
+    accpool key, acc, cb, (acc, cb) =>
+      # lock
+      @_process key, cb, (done) =>
+        @index.get key, (err, pos) =>
+          # create if not exists
+          unless pos
+            @_write key, acc.toString(), done
+          else
+            # get data
+            @_getData pos, (err, num) =>
+              num += acc
+              num = num.toString()
+              # set data
+              if num.length > pos[1]
+                # extend space
+                @_write key, num, done
+              else
+                @_saveData num, pos, done
 
   _process: (key, done, cb) ->
     the = @
     lock_file = path.join @options.dir, @options.lock_dir, key+'.lock'
-    # 默认重试5秒，如果文件锁1000ms未更新则抢锁，防止雪崩
-    lockfile.lock lock_file, @options.lock_opt, (err) ->
-      if err then done err
-      else cb -> lockfile.unlock lock_file, done
+    lockfile.lock lock_file, ->
+      cb -> lockfile.unlock lock_file, done
 
   _getData: (pos, cb) ->
     _buffer = new Buffer pos[1]
@@ -291,7 +293,7 @@ class Index
     return if @clearing
     @clearing = true
     # 默认重试5秒，如果文件锁1000ms未更新则抢锁，防止雪崩
-    lockfile.lock @lock, @options.lock_opt, (err) =>
+    lockfile.lock @lock, (err) =>
       if err
         setTimeout =>
           @clearing = false
