@@ -29,9 +29,11 @@ if(cluster.isMaster) {
       var i = 0;
       var func = [];
       while(i++ < max){
-        func.push(function(){
-          db.increase('key', this);
-        });
+        (function(i){
+          func.push(function(){
+          db.increase('key'+i, this);
+        })
+        })(i);
       }
       p = ep()
       p.on('error', function(err){
