@@ -108,6 +108,8 @@ class File_DB
       result = {}
       for key, position of data
         func.push @_getdataMaker key, position
+      unless func.length
+        return cb null, result
       flow = ep()
       flow.lazy func
       flow.lazy ->
@@ -128,6 +130,8 @@ class File_DB
       result = {}
       for key, position of data
         func.push @_popdataMaker key, position
+      unless func.length
+        return cb null, result
       flow = ep()
       flow.lazy func
       flow.lazy ->

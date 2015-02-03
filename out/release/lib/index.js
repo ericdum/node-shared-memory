@@ -155,6 +155,9 @@ File_DB = (function() {
           position = data[key];
           func.push(_this._getdataMaker(key, position));
         }
+        if (!func.length) {
+          return cb(null, result);
+        }
         flow = ep();
         flow.lazy(func);
         flow.lazy(function() {
@@ -195,6 +198,9 @@ File_DB = (function() {
         for (key in data) {
           position = data[key];
           func.push(_this._popdataMaker(key, position));
+        }
+        if (!func.length) {
+          return cb(null, result);
         }
         flow = ep();
         flow.lazy(func);

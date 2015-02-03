@@ -145,6 +145,19 @@ describe("getAll", function(){
       done()
     })
   })
+
+  it('get empty data', function(done){
+    _c = db.index.getAll;
+    db.index.getAll = function(cb){
+      db.index.getAll = _c;
+      cb(null, {})
+    }
+    db.getAll(function(err, data){
+      expect(err).to.not.be.ok()
+      expect(data).to.be.eql({})
+      done()
+    })
+  })
 });
 
 describe("popAll", function(){
@@ -159,6 +172,19 @@ describe("popAll", function(){
         expect(Object.keys(data).length).to.be(0)
         done()
       })
+    })
+  })
+
+  it('pop empty data', function(done){
+    _c = db.index.getAll;
+    db.index.getAll = function(cb){
+      db.index.getAll = _c;
+      cb(null, {})
+    }
+    db.popAll(function(err, data){
+      expect(err).to.not.be.ok()
+      expect(data).to.be.eql({})
+      done()
     })
   })
 });
