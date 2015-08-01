@@ -319,7 +319,7 @@ class Index
       exists = false
       for key, length of tasks
         if @cache[key]
-          continue if @cache[key][1] <= length
+          continue if @cache[key][1] >= length
           exists = true
         @cache[key] = [start, length]
         start += length

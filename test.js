@@ -78,6 +78,39 @@ describe("set", function(){
       })
     })
   })
+
+  it('json', function(done){
+    db.set('json', {
+      a: 1,
+      b: "b",
+      c: {
+        d: 2,
+        c: "c"
+      }
+    }, function() {
+      db.get('json', function(err, data){
+        expect(data).to.be.eql({ a: 1, b: 'b', c: { d: 2, c: 'c' } });
+        done()
+      });
+    });
+  })
+
+  it('longer json', function(done){
+    db.set('json', {
+      a: 1,
+      b: "b",
+      c: {
+        d: 2,
+        e: "e"
+      },
+      f: 7572
+    }, function() {
+      db.get('json', function(err, data){
+        expect(data).to.be.eql({ a: 1, b: 'b', c: { d: 2, e: 'e' }, f:7572 });
+        done()
+      });
+    });
+  })
 });
 describe("pop", function(){
   it('should get data back and delete it', function(done){
