@@ -29,3 +29,5 @@ node_modules
 
 # Shared Memory
 tmp
+
+out
